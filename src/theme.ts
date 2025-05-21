@@ -69,5 +69,18 @@ export const theme = createTheme({
         },
       },
     },
+    MuiLink: {
+      styleOverrides: {
+        root: {
+          '&.register-link': {
+            textDecoration: 'none',
+            fontWeight: 'bold',
+            '&:hover': {
+              textDecoration: 'underline',
+            },
+          },
+        },
+      },
+    },
   },
 });

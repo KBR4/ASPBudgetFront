@@ -31,7 +31,7 @@ export default function BudgetList() {
   };
 
   const handleCreateNew = () => {
-    navigate('/budgetworkspace');
+    navigate('/budget/0');
   };
 
   const handleSelect = () => {

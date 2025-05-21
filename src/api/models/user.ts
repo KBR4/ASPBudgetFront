@@ -8,3 +8,4 @@ export type UserDto = {
   role?: Roles;
   logoAttachmentUrl?: string;
 };
+export { Roles };

@@ -7,5 +7,3 @@ export type BudgetRecordDto = {
   total: number;
   comment?: string;
 };
-
-export {};

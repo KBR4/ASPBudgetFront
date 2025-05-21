@@ -72,13 +72,8 @@ export default function BudgetWorkspace() {
     setFilteredRecords(filteredRecords.filter((record) => record.id !== id));
   };
 
-  const updateTotal = () => {
-    const total = records.reduce((sum, record) => sum + record.total, 0);
-    setResult({ ...result, totalProfit: total });
-  };
-
   const handleSave = () => {
-    //save and exit
+    //add save logic
     navigate('/');
   };
 
@@ -260,7 +255,7 @@ export default function BudgetWorkspace() {
         <Button
           variant='contained'
           size='large'
-          onClick={() => navigate('/')}
+          onClick={handleSave}
           sx={{ minWidth: 150 }}
         >
           Save & Exit

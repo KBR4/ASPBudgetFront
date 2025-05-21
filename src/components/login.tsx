@@ -1,6 +1,6 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Box, TextField, Button, Typography, Grid } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import { Box, TextField, Button, Typography, Grid, Link } from '@mui/material';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -23,14 +23,7 @@ export default function Login() {
       <Grid container justifyContent='center'>
         <Typography variant='body2'>
           Don&apos;t have an account?{' '}
-          <Link
-            to='/register'
-            style={{
-              textDecoration: 'none',
-              color: '#1976d2',
-              fontWeight: 'bold',
-            }}
-          >
+          <Link href='/register' className='register-link' color='primary'>
             Create one
           </Link>
         </Typography>
