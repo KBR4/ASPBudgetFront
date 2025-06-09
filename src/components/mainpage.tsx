@@ -1,32 +1,49 @@
-import React from 'react';
-import { Box, Typography, Button, Select, MenuItem } from '@mui/material';
-import { useState } from 'react';
+import React, { useState } from 'react'; // Добавлен импорт useState
+import {
+  Box,
+  Typography,
+  Button,
+  Select,
+  MenuItem,
+  CircularProgress,
+} from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import { BudgetDto } from '../api/models/budget';
-import { UserDto } from '../api/models/user';
-import { Roles } from '../api/models/roles';
-import { mockUser } from '../api/models/mockdatauser';
-
-const mockBudgets: BudgetDto[] = [
-  { id: 1, name: 'Budget 1', creatorId: 1 },
-  { id: 2, name: 'Debts', creatorId: 1 },
-  { id: 3, name: 'Budget 10', creatorId: 1 },
-];
+import { useUserInfoQuery } from '../api/userApiSlice';
+import {
+  useGetAllBudgetsQuery,
+  useDeleteBudgetMutation,
+} from '../api/budgetApiSlice';
 
 export default function BudgetList() {
-  const [budgets, setBudgets] = useState<BudgetDto[]>(mockBudgets);
-  const [selectedBudgetId, setSelectedBudgetId] = useState<number | null>(null);
   const navigate = useNavigate();
+  const [selectedBudgetId, setSelectedBudgetId] = useState<number | null>(null);
+
+  // 1. Получаем данные пользователя (передаем undefined, так как запрос не требует параметров)
+  const {
+    data: user,
+    isLoading: isUserLoading,
+    isError,
+  } = useUserInfoQuery({});
+
+  // 2. Получаем все бюджеты
+  const { data: budgets = [], isLoading: isBudgetsLoading } =
+    useGetAllBudgetsQuery();
+
+  // 3. Хук для удаления бюджета
+  const [deleteBudget] = useDeleteBudgetMutation();
 
   const handleLogout = () => {
     navigate('/login');
-    //logic for logout
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (selectedBudgetId) {
-      setBudgets(budgets.filter((budget) => budget.id !== selectedBudgetId));
-      setSelectedBudgetId(null);
+      try {
+        await deleteBudget(selectedBudgetId).unwrap();
+        setSelectedBudgetId(null);
+      } catch (error) {
+        console.error('Failed to delete budget:', error);
+      }
     }
   };
 
@@ -40,11 +57,25 @@ export default function BudgetList() {
     }
   };
 
+  if (isUserLoading) {
+    return (
+      <div
+        style={{ display: 'flex', justifyContent: 'center', padding: '50px' }}
+      >
+        <CircularProgress />
+      </div>
+    );
+  }
+
+  if (isError) {
+    navigate('/login');
+  }
+
   return (
     <Box sx={{ maxWidth: 800, mx: 'auto', mt: 4, p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Typography variant='h6' sx={{ mr: 2 }}>
-          Welcome {mockUser.firstName} {mockUser.lastName}!
+          Welcome {user?.firstName} {user?.lastName}!
         </Typography>
         <Button onClick={() => navigate('/profile')}>Profile</Button>
         <Button variant='outlined' onClick={handleLogout}>
