@@ -11,12 +11,9 @@ import {
   TableRow,
   Paper,
   TextField,
+  CircularProgress,
 } from '@mui/material';
 import { useNavigate, useParams } from 'react-router-dom';
-import { BudgetRecordDto } from '../api/models/budgetRecord';
-import { BudgetResultDto } from '../api/models/budgetResult';
-import { mockUser } from '../api/models/mockdatauser';
-import { mockRecords, mockResult } from '../api/models/mockbudgetdata';
 import {
   Formik,
   Form,
@@ -26,6 +23,18 @@ import {
   FormikErrors,
 } from 'formik';
 import * as Yup from 'yup';
+import {
+  useGetBudgetByIdQuery,
+  useUpdateBudgetMutation,
+} from '../api/budgetApiSlice';
+import {
+  useGetAllBudgetRecordsQuery,
+  useAddBudgetRecordMutation,
+  useUpdateBudgetRecordMutation,
+  useDeleteBudgetRecordMutation,
+} from '../api/budgetRecordApiSlice';
+import { useUserInfoQuery } from '../api/userApiSlice';
+import { BudgetRecordDto } from '../api/models/budgetRecord';
 
 type RecordErrors = {
   name?: string;
@@ -51,26 +60,82 @@ export default function BudgetWorkspace() {
   const budgetId = id ? parseInt(id) : 0;
   const navigate = useNavigate();
 
-  const initialRecords = mockRecords.filter(
+  // Загрузка данных бюджета
+  const {
+    data: budget,
+    isLoading: isBudgetLoading,
+    isError: isBudgetError,
+  } = useGetBudgetByIdQuery(budgetId, { skip: !id });
+
+  // Загрузка записей бюджета
+  const {
+    data: records = [],
+    isLoading: isRecordsLoading,
+    isError: isRecordsError,
+  } = useGetAllBudgetRecordsQuery();
+
+  // Загрузка данных пользователя
+  const { data: user } = useUserInfoQuery({});
+
+  // Мутации для обновления данных
+  const [updateBudget] = useUpdateBudgetMutation();
+  const [addRecord] = useAddBudgetRecordMutation();
+  const [updateRecord] = useUpdateBudgetRecordMutation();
+  const [deleteRecord] = useDeleteBudgetRecordMutation();
+
+  // Фильтрация записей по текущему бюджету
+  const filteredRecords = records.filter(
     (record) => record.budgetId === budgetId
   );
 
   const initialValues = {
-    budgetName: `Budget ${id}`,
-    records: initialRecords,
+    budgetName: budget?.name || `Budget ${id}`,
+    records: filteredRecords,
     isEditingName: false,
   };
 
-  const handleSubmit = (values: typeof initialValues) => {
-    console.log('Submitting:', values);
-    navigate('/');
+  const handleSubmit = async (values: typeof initialValues) => {
+    try {
+      // Обновляем название бюджета
+      if (budget) {
+        await updateBudget({
+          ...budget,
+          name: values.budgetName,
+        }).unwrap();
+      }
+
+      // Перенаправляем на главную страницу
+      navigate('/');
+    } catch (error) {
+      console.error('Failed to save budget:', error);
+    }
   };
+
+  if (isBudgetLoading || isRecordsLoading) {
+    return (
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '100vh',
+        }}
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (isBudgetError || isRecordsError) {
+    return <Typography color='error'>Error loading budget data</Typography>;
+  }
 
   return (
     <Formik
       initialValues={initialValues}
       validationSchema={BudgetSchema}
       onSubmit={handleSubmit}
+      enableReinitialize
     >
       {({ values, errors, touched, handleChange, setFieldValue }) => (
         <Box sx={{ p: 3 }}>
@@ -78,7 +143,7 @@ export default function BudgetWorkspace() {
             sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mb: 3 }}
           >
             <Typography variant='h6'>
-              Welcome {mockUser.firstName} {mockUser.lastName}!
+              Welcome {user?.firstName} {user?.lastName}!
             </Typography>
             <Button onClick={() => navigate('/profile')}>Profile</Button>
             <Button variant='outlined' onClick={() => navigate('/')}>
@@ -155,6 +220,22 @@ export default function BudgetWorkspace() {
                                   helperText={
                                     recordTouched.name && recordErrors.name
                                   }
+                                  onBlur={async () => {
+                                    const recordToUpdate =
+                                      values.records[index];
+                                    if (recordToUpdate.id) {
+                                      await updateRecord(recordToUpdate);
+                                    } else {
+                                      const newRecord = await addRecord({
+                                        ...recordToUpdate,
+                                        budgetId,
+                                      }).unwrap();
+                                      setFieldValue(
+                                        `records.${index}.id`,
+                                        newRecord.id
+                                      );
+                                    }
+                                  }}
                                 />
                               </TableCell>
                               <TableCell>
@@ -169,6 +250,7 @@ export default function BudgetWorkspace() {
                                       .toISOString()
                                       .split('T')[0]
                                   }
+                                  disabled
                                 />
                               </TableCell>
                               <TableCell>
@@ -186,6 +268,13 @@ export default function BudgetWorkspace() {
                                     recordTouched.spendingDate &&
                                     recordErrors.spendingDate
                                   }
+                                  onBlur={async () => {
+                                    const recordToUpdate =
+                                      values.records[index];
+                                    if (recordToUpdate.id) {
+                                      await updateRecord(recordToUpdate);
+                                    }
+                                  }}
                                 />
                               </TableCell>
                               <TableCell>
@@ -201,6 +290,13 @@ export default function BudgetWorkspace() {
                                   helperText={
                                     recordTouched.total && recordErrors.total
                                   }
+                                  onBlur={async () => {
+                                    const recordToUpdate =
+                                      values.records[index];
+                                    if (recordToUpdate.id) {
+                                      await updateRecord(recordToUpdate);
+                                    }
+                                  }}
                                 />
                               </TableCell>
                               <TableCell>
@@ -209,13 +305,25 @@ export default function BudgetWorkspace() {
                                   name={`records.${index}.comment`}
                                   size='small'
                                   fullWidth
+                                  onBlur={async () => {
+                                    const recordToUpdate =
+                                      values.records[index];
+                                    if (recordToUpdate.id) {
+                                      await updateRecord(recordToUpdate);
+                                    }
+                                  }}
                                 />
                               </TableCell>
                               <TableCell>
                                 <Button
                                   size='small'
                                   color='error'
-                                  onClick={() => remove(index)}
+                                  onClick={async () => {
+                                    if (record.id) {
+                                      await deleteRecord(record.id);
+                                    }
+                                    remove(index);
+                                  }}
                                 >
                                   Delete
                                 </Button>
@@ -232,15 +340,8 @@ export default function BudgetWorkspace() {
                       variant='contained'
                       type='button'
                       onClick={() => {
-                        const newId =
-                          values.records.length > 0
-                            ? Math.max(
-                                ...values.records.map((r) => r.id || 0)
-                              ) + 1
-                            : 1;
-
                         push({
-                          id: newId,
+                          id: undefined,
                           name: '',
                           creationDate: new Date(),
                           spendingDate: new Date(),

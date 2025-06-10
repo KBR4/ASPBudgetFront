@@ -10,6 +10,9 @@ export type AddBudgetResponse = { id: number };
 export type DeleteBudgetRequest = number;
 export type DeleteBudgetResponse = void;
 
+export type UpdateBudgetRequest = BudgetDto;
+export type UpdateBudgetResponse = void;
+
 export type GetAllBudgetsRequest = void;
 export type GetAllBudgetsResponse = BudgetDto[];
 
@@ -43,6 +46,19 @@ export const budgetApiSlice = apiSlice.injectEndpoints({
       invalidatesTags: (result, error, id) => [{ type: 'Budget', id }],
     }),
 
+    // Обновление бюджета
+    updateBudget: builder.mutation<UpdateBudgetResponse, UpdateBudgetRequest>({
+      query: (body) => ({
+        url: '/Budget',
+        method: 'PUT',
+        body,
+      }),
+      invalidatesTags: (result, error, body) => [
+        { type: 'Budget', id: body.id },
+      ],
+    }),
+
+    // Получение всех бюджетов
     getAllBudgets: builder.query<GetAllBudgetsResponse, GetAllBudgetsRequest>({
       query: () => ({
         url: '/Budget',
@@ -57,5 +73,6 @@ export const {
   useGetBudgetByIdQuery,
   useAddBudgetMutation,
   useDeleteBudgetMutation,
+  useUpdateBudgetMutation,
   useGetAllBudgetsQuery,
 } = budgetApiSlice;
