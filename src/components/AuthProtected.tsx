@@ -10,7 +10,7 @@ export interface AuthProtectedProps {
 export default function AuthProtected({
   redirectPath = '/login',
 }: AuthProtectedProps) {
-  const { data: user, isLoading, isError } = useUserInfoQuery({});
+  const { data: user, isLoading, isError } = useUserInfoQuery();
 
   if (isLoading) {
     <Box>
