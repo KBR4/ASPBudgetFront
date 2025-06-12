@@ -12,6 +12,7 @@ import ProfilePage from './components/profilepage';
 import MainPage from './components/mainpage';
 import BudgetWorkspace from './components/budgetworkspace';
 import AuthProtected from './components/AuthProtected';
+import LogoutPage from './components/logoutPage';
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
             {/* Public routes (no auth required) */}
             <Route path='/login' element={<Login />} />
             <Route path='/register' element={<Register />} />
+            <Route path='/logout' element={<LogoutPage />} />
 
             {/* Protected routes (require authentication) */}
             <Route element={<AuthProtected />}>
