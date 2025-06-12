@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -12,6 +12,7 @@ import {
   Paper,
   TextField,
   CircularProgress,
+  Alert,
 } from '@mui/material';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -26,9 +27,10 @@ import * as Yup from 'yup';
 import {
   useGetBudgetByIdQuery,
   useUpdateBudgetMutation,
+  useAddBudgetMutation,
 } from '../api/budgetApiSlice';
 import {
-  useGetAllBudgetRecordsQuery,
+  useGetBudgetRecordsByBudgetIdQuery,
   useAddBudgetRecordMutation,
   useUpdateBudgetRecordMutation,
   useDeleteBudgetRecordMutation,
@@ -44,9 +46,9 @@ type RecordErrors = {
 };
 
 const RecordSchema = Yup.object().shape({
-  name: Yup.string().required('Required'),
-  total: Yup.number().required('Required').min(0, 'Must be positive'),
-  spendingDate: Yup.date().required('Required'),
+  name: Yup.string().required('Name is required'),
+  total: Yup.number().required('Total is required').min(0, 'Must be positive'),
+  spendingDate: Yup.date().required('Spending date is required'),
   comment: Yup.string(),
 });
 
@@ -58,60 +60,186 @@ const BudgetSchema = Yup.object().shape({
 export default function BudgetWorkspace() {
   const { id } = useParams<{ id: string }>();
   const budgetId = id ? parseInt(id) : 0;
+  const isNewBudget = budgetId === 0;
   const navigate = useNavigate();
+  const [saveError, setSaveError] = useState<string>('');
+  const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
 
-  // Загрузка данных бюджета
   const {
     data: budget,
     isLoading: isBudgetLoading,
     isError: isBudgetError,
-  } = useGetBudgetByIdQuery(budgetId, { skip: !id });
+  } = useGetBudgetByIdQuery(budgetId, { skip: !id || isNewBudget });
 
-  // Загрузка записей бюджета
+  // Use the new hook to get records for this specific budget
   const {
     data: records = [],
     isLoading: isRecordsLoading,
     isError: isRecordsError,
-  } = useGetAllBudgetRecordsQuery();
+    refetch: refetchRecords,
+  } = useGetBudgetRecordsByBudgetIdQuery(budgetId, {
+    skip: !id || isNewBudget,
+  });
 
-  // Загрузка данных пользователя
-  const { data: user } = useUserInfoQuery({});
+  const {
+    data: user,
+    isLoading: isUserLoading,
+    isError,
+  } = useUserInfoQuery(undefined);
 
-  // Мутации для обновления данных
   const [updateBudget] = useUpdateBudgetMutation();
+  const [createBudget] = useAddBudgetMutation();
   const [addRecord] = useAddBudgetRecordMutation();
   const [updateRecord] = useUpdateBudgetRecordMutation();
   const [deleteRecord] = useDeleteBudgetRecordMutation();
 
-  // Фильтрация записей по текущему бюджету
-  const filteredRecords = records.filter(
-    (record) => record.budgetId === budgetId
-  );
-
   const initialValues = {
-    budgetName: budget?.name || `Budget ${id}`,
-    records: filteredRecords,
+    budgetName: budget?.name || (isNewBudget ? 'New Budget' : `Budget ${id}`),
+    records: records,
     isEditingName: false,
+  };
+
+  const validateRecords = (records: BudgetRecordDto[]) => {
+    const errors: string[] = [];
+    records.forEach((record, index) => {
+      if (!record.name || record.name.trim() === '') {
+        errors.push(`Record ${index + 1}: Name is required`);
+      }
+      if (
+        record.total === undefined ||
+        record.total === null ||
+        record.total < 0
+      ) {
+        errors.push(`Record ${index + 1}: Valid total amount is required`);
+      }
+      if (!record.spendingDate) {
+        errors.push(`Record ${index + 1}: Spending date is required`);
+      }
+    });
+    return errors;
   };
 
   const handleSubmit = async (values: typeof initialValues) => {
     try {
-      // Обновляем название бюджета
-      if (budget) {
+      setSaveError('');
+      setSaveSuccess(false);
+
+      const validationErrors = validateRecords(values.records);
+      if (validationErrors.length > 0) {
+        setSaveError(validationErrors.join(', '));
+        return;
+      }
+
+      let currentBudgetId = budgetId;
+
+      if (isNewBudget) {
+        const newBudget = await createBudget({
+          name: 'New Budget',
+          creatorId: user!.id,
+          description: '',
+        }).unwrap();
+        currentBudgetId = newBudget.id;
+      } else if (budget && budget.name !== values.budgetName) {
         await updateBudget({
           ...budget,
           name: values.budgetName,
         }).unwrap();
       }
 
-      // Перенаправляем на главную страницу
-      navigate('/');
+      for (const record of values.records) {
+        if (record.id) {
+          await updateRecord({
+            ...record,
+            budgetId: currentBudgetId,
+          }).unwrap();
+        } else {
+          await addRecord({
+            ...record,
+            budgetId: currentBudgetId,
+          }).unwrap();
+        }
+      }
+
+      setSaveSuccess(true);
+
+      if (isNewBudget) {
+        setTimeout(() => {
+          navigate(`/budget/${currentBudgetId}`);
+        }, 1000);
+      } else {
+        await refetchRecords();
+        setTimeout(() => {
+          navigate('/');
+        }, 2000);
+      }
     } catch (error) {
       console.error('Failed to save budget:', error);
+      setSaveError('Failed to save budget. Please try again.');
     }
   };
 
-  if (isBudgetLoading || isRecordsLoading) {
+  const handleRecordUpdate = async (
+    record: BudgetRecordDto,
+    index: number,
+    setFieldValue: any
+  ) => {
+    if (isNewBudget) return;
+
+    try {
+      if (record.id) {
+        await updateRecord({
+          ...record,
+          budgetId,
+        }).unwrap();
+      } else if (record.name && record.name.trim() !== '') {
+        const newRecord = await addRecord({
+          ...record,
+          budgetId,
+        }).unwrap();
+        setFieldValue(`records.${index}.id`, newRecord.id);
+      }
+    } catch (error) {
+      console.error('Failed to update record:', error);
+    }
+  };
+
+  const handleDeleteRecord = async (
+    record: BudgetRecordDto,
+    index: number,
+    remove: (index: number) => void
+  ) => {
+    try {
+      if (record.id) {
+        await deleteRecord(record.id).unwrap();
+      }
+      remove(index);
+      await refetchRecords();
+    } catch (error) {
+      console.error('Failed to delete record:', error);
+    }
+  };
+
+  const handleSaveName = async (budgetName: string, setFieldValue: any) => {
+    if (isNewBudget) {
+      setFieldValue('isEditingName', false);
+      return;
+    }
+
+    try {
+      if (budget && budget.name !== budgetName) {
+        await updateBudget({
+          ...budget,
+          name: budgetName,
+        }).unwrap();
+      }
+      setFieldValue('isEditingName', false);
+    } catch (error) {
+      console.error('Failed to update budget name:', error);
+      setSaveError('Failed to update budget name. Please try again.');
+    }
+  };
+
+  if ((!isNewBudget && isBudgetLoading) || (!isNewBudget && isRecordsLoading)) {
     return (
       <Box
         sx={{
@@ -126,7 +254,7 @@ export default function BudgetWorkspace() {
     );
   }
 
-  if (isBudgetError || isRecordsError) {
+  if (!isNewBudget && (isBudgetError || isRecordsError)) {
     return <Typography color='error'>Error loading budget data</Typography>;
   }
 
@@ -137,7 +265,15 @@ export default function BudgetWorkspace() {
       onSubmit={handleSubmit}
       enableReinitialize
     >
-      {({ values, errors, touched, handleChange, setFieldValue }) => (
+      {({
+        values,
+        errors,
+        touched,
+        handleChange,
+        setFieldValue,
+        isSubmitting,
+        isValid,
+      }) => (
         <Box sx={{ p: 3 }}>
           <Box
             sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mb: 3 }}
@@ -150,6 +286,18 @@ export default function BudgetWorkspace() {
               Back
             </Button>
           </Box>
+
+          {saveError && (
+            <Alert severity='error' sx={{ mb: 2 }}>
+              {saveError}
+            </Alert>
+          )}
+
+          {saveSuccess && (
+            <Alert severity='success' sx={{ mb: 2 }}>
+              Budget saved successfully! Redirecting...
+            </Alert>
+          )}
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
             {values.isEditingName ? (
@@ -165,7 +313,9 @@ export default function BudgetWorkspace() {
                 <Button
                   variant='contained'
                   size='small'
-                  onClick={() => setFieldValue('isEditingName', false)}
+                  onClick={() =>
+                    handleSaveName(values.budgetName, setFieldValue)
+                  }
                 >
                   Save Name
                 </Button>
@@ -189,11 +339,11 @@ export default function BudgetWorkspace() {
                     <Table>
                       <TableHead>
                         <TableRow>
-                          <TableCell>ID</TableCell>
-                          <TableCell>Name</TableCell>
+                          <TableCell>#</TableCell>
+                          <TableCell>Name *</TableCell>
                           <TableCell>Creation Date</TableCell>
-                          <TableCell>Spending Date</TableCell>
-                          <TableCell>Total</TableCell>
+                          <TableCell>Spending Date *</TableCell>
+                          <TableCell>Total *</TableCell>
                           <TableCell>Comment</TableCell>
                           <TableCell>Actions</TableCell>
                         </TableRow>
@@ -206,14 +356,15 @@ export default function BudgetWorkspace() {
                             (touched.records?.[index] as RecordErrors) || {};
 
                           return (
-                            <TableRow key={record.id || index}>
-                              <TableCell>{record.id || 'new'}</TableCell>
+                            <TableRow key={record.id || `new-${index}`}>
+                              <TableCell>{index + 1}</TableCell>
                               <TableCell>
                                 <Field
                                   as={TextField}
                                   name={`records.${index}.name`}
                                   size='small'
                                   fullWidth
+                                  required
                                   error={
                                     recordTouched.name && !!recordErrors.name
                                   }
@@ -221,20 +372,11 @@ export default function BudgetWorkspace() {
                                     recordTouched.name && recordErrors.name
                                   }
                                   onBlur={async () => {
-                                    const recordToUpdate =
-                                      values.records[index];
-                                    if (recordToUpdate.id) {
-                                      await updateRecord(recordToUpdate);
-                                    } else {
-                                      const newRecord = await addRecord({
-                                        ...recordToUpdate,
-                                        budgetId,
-                                      }).unwrap();
-                                      setFieldValue(
-                                        `records.${index}.id`,
-                                        newRecord.id
-                                      );
-                                    }
+                                    await handleRecordUpdate(
+                                      values.records[index],
+                                      index,
+                                      setFieldValue
+                                    );
                                   }}
                                 />
                               </TableCell>
@@ -246,9 +388,11 @@ export default function BudgetWorkspace() {
                                   size='small'
                                   InputLabelProps={{ shrink: true }}
                                   value={
-                                    new Date(record.creationDate)
-                                      .toISOString()
-                                      .split('T')[0]
+                                    record.creationDate
+                                      ? new Date(record.creationDate)
+                                          .toISOString()
+                                          .split('T')[0]
+                                      : new Date().toISOString().split('T')[0]
                                   }
                                   disabled
                                 />
@@ -259,7 +403,15 @@ export default function BudgetWorkspace() {
                                   type='date'
                                   name={`records.${index}.spendingDate`}
                                   size='small'
+                                  required
                                   InputLabelProps={{ shrink: true }}
+                                  value={
+                                    record.spendingDate
+                                      ? new Date(record.spendingDate)
+                                          .toISOString()
+                                          .split('T')[0]
+                                      : ''
+                                  }
                                   error={
                                     recordTouched.spendingDate &&
                                     !!recordErrors.spendingDate
@@ -269,11 +421,11 @@ export default function BudgetWorkspace() {
                                     recordErrors.spendingDate
                                   }
                                   onBlur={async () => {
-                                    const recordToUpdate =
-                                      values.records[index];
-                                    if (recordToUpdate.id) {
-                                      await updateRecord(recordToUpdate);
-                                    }
+                                    await handleRecordUpdate(
+                                      values.records[index],
+                                      index,
+                                      setFieldValue
+                                    );
                                   }}
                                 />
                               </TableCell>
@@ -283,7 +435,8 @@ export default function BudgetWorkspace() {
                                   type='number'
                                   name={`records.${index}.total`}
                                   size='small'
-                                  inputProps={{ step: '0.01' }}
+                                  required
+                                  inputProps={{ step: '0.01', min: '0' }}
                                   error={
                                     recordTouched.total && !!recordErrors.total
                                   }
@@ -291,11 +444,11 @@ export default function BudgetWorkspace() {
                                     recordTouched.total && recordErrors.total
                                   }
                                   onBlur={async () => {
-                                    const recordToUpdate =
-                                      values.records[index];
-                                    if (recordToUpdate.id) {
-                                      await updateRecord(recordToUpdate);
-                                    }
+                                    await handleRecordUpdate(
+                                      values.records[index],
+                                      index,
+                                      setFieldValue
+                                    );
                                   }}
                                 />
                               </TableCell>
@@ -306,11 +459,11 @@ export default function BudgetWorkspace() {
                                   size='small'
                                   fullWidth
                                   onBlur={async () => {
-                                    const recordToUpdate =
-                                      values.records[index];
-                                    if (recordToUpdate.id) {
-                                      await updateRecord(recordToUpdate);
-                                    }
+                                    await handleRecordUpdate(
+                                      values.records[index],
+                                      index,
+                                      setFieldValue
+                                    );
                                   }}
                                 />
                               </TableCell>
@@ -318,12 +471,9 @@ export default function BudgetWorkspace() {
                                 <Button
                                   size='small'
                                   color='error'
-                                  onClick={async () => {
-                                    if (record.id) {
-                                      await deleteRecord(record.id);
-                                    }
-                                    remove(index);
-                                  }}
+                                  onClick={() =>
+                                    handleDeleteRecord(record, index, remove)
+                                  }
                                 >
                                   Delete
                                 </Button>
@@ -345,7 +495,7 @@ export default function BudgetWorkspace() {
                           name: '',
                           creationDate: new Date(),
                           spendingDate: new Date(),
-                          budgetId: budgetId,
+                          budgetId: isNewBudget ? 0 : budgetId,
                           total: 0,
                           comment: '',
                         });
@@ -357,8 +507,6 @@ export default function BudgetWorkspace() {
                 </>
               )}
             </FieldArray>
-
-            <TotalDisplay />
 
             <Box
               sx={{
@@ -378,8 +526,9 @@ export default function BudgetWorkspace() {
                 size='large'
                 type='submit'
                 sx={{ minWidth: 150 }}
+                disabled={isSubmitting}
               >
-                Save & Exit
+                {isSubmitting ? 'Saving...' : 'Save & Exit'}
               </Button>
             </Box>
           </Form>
@@ -399,5 +548,5 @@ function TotalDisplay() {
     0
   );
 
-  return <Typography variant='h6'>Total: {total.toFixed(2)}</Typography>;
+  return <Typography variant='h6'>Total: ${total.toFixed(2)}</Typography>;
 }

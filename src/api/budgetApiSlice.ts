@@ -16,9 +16,11 @@ export type UpdateBudgetResponse = void;
 export type GetAllBudgetsRequest = void;
 export type GetAllBudgetsResponse = BudgetDto[];
 
+export type GetUserBudgetsRequest = void;
+export type GetUserBudgetsResponse = BudgetDto[];
+
 export const budgetApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
-    // Получение бюджета по ID
     getBudgetById: builder.query<GetBudgetByIdResponse, GetBudgetByIdRequest>({
       query: (id) => ({
         url: `/Budget/${id}`,
@@ -27,7 +29,6 @@ export const budgetApiSlice = apiSlice.injectEndpoints({
       providesTags: (result, error, id) => [{ type: 'Budget', id }],
     }),
 
-    // Добавление бюджета
     addBudget: builder.mutation<AddBudgetResponse, AddBudgetRequest>({
       query: (body) => ({
         url: '/Budget',
@@ -37,7 +38,6 @@ export const budgetApiSlice = apiSlice.injectEndpoints({
       invalidatesTags: ['Budget'],
     }),
 
-    // Удаление бюджета
     deleteBudget: builder.mutation<DeleteBudgetResponse, DeleteBudgetRequest>({
       query: (id) => ({
         url: `/Budget/${id}`,
@@ -46,7 +46,6 @@ export const budgetApiSlice = apiSlice.injectEndpoints({
       invalidatesTags: (result, error, id) => [{ type: 'Budget', id }],
     }),
 
-    // Обновление бюджета
     updateBudget: builder.mutation<UpdateBudgetResponse, UpdateBudgetRequest>({
       query: (body) => ({
         url: '/Budget',
@@ -58,10 +57,20 @@ export const budgetApiSlice = apiSlice.injectEndpoints({
       ],
     }),
 
-    // Получение всех бюджетов
     getAllBudgets: builder.query<GetAllBudgetsResponse, GetAllBudgetsRequest>({
       query: () => ({
         url: '/Budget',
+        method: 'GET',
+      }),
+      providesTags: ['Budget'],
+    }),
+
+    getUserBudgets: builder.query<
+      GetUserBudgetsResponse,
+      GetUserBudgetsRequest
+    >({
+      query: () => ({
+        url: '/Budget/user',
         method: 'GET',
       }),
       providesTags: ['Budget'],
@@ -75,4 +84,5 @@ export const {
   useDeleteBudgetMutation,
   useUpdateBudgetMutation,
   useGetAllBudgetsQuery,
+  useGetUserBudgetsQuery,
 } = budgetApiSlice;

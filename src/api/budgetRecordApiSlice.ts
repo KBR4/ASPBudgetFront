@@ -7,6 +7,9 @@ export type GetAllBudgetRecordsResponse = BudgetRecordDto[];
 export type GetBudgetRecordByIdRequest = number;
 export type GetBudgetRecordByIdResponse = BudgetRecordDto;
 
+export type GetBudgetRecordsByBudgetIdRequest = number;
+export type GetBudgetRecordsByBudgetIdResponse = BudgetRecordDto[];
+
 export type AddBudgetRecordRequest = Omit<BudgetRecordDto, 'id'>;
 export type AddBudgetRecordResponse = { id: number };
 
@@ -18,7 +21,6 @@ export type DeleteBudgetRecordResponse = void;
 
 export const budgetRecordApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
-    // Получение всех записей
     getAllBudgetRecords: builder.query<
       GetAllBudgetRecordsResponse,
       GetAllBudgetRecordsRequest
@@ -30,7 +32,6 @@ export const budgetRecordApiSlice = apiSlice.injectEndpoints({
       providesTags: ['BudgetRecord'],
     }),
 
-    // Получение записи по ID
     getBudgetRecordById: builder.query<
       GetBudgetRecordByIdResponse,
       GetBudgetRecordByIdRequest
@@ -42,7 +43,20 @@ export const budgetRecordApiSlice = apiSlice.injectEndpoints({
       providesTags: (result, error, id) => [{ type: 'BudgetRecord', id }],
     }),
 
-    // Добавление новой записи
+    getBudgetRecordsByBudgetId: builder.query<
+      GetBudgetRecordsByBudgetIdResponse,
+      GetBudgetRecordsByBudgetIdRequest
+    >({
+      query: (budgetId) => ({
+        url: `/BudgetRecord/budget/${budgetId}`,
+        method: 'GET',
+      }),
+      providesTags: (result, error, budgetId) => [
+        { type: 'BudgetRecord', id: `budget-${budgetId}` },
+        'BudgetRecord',
+      ],
+    }),
+
     addBudgetRecord: builder.mutation<
       AddBudgetRecordResponse,
       AddBudgetRecordRequest
@@ -55,7 +69,6 @@ export const budgetRecordApiSlice = apiSlice.injectEndpoints({
       invalidatesTags: ['BudgetRecord'],
     }),
 
-    // Обновление записи
     updateBudgetRecord: builder.mutation<
       UpdateBudgetRecordResponse,
       UpdateBudgetRecordRequest
@@ -67,10 +80,10 @@ export const budgetRecordApiSlice = apiSlice.injectEndpoints({
       }),
       invalidatesTags: (result, error, arg) => [
         { type: 'BudgetRecord', id: arg.id },
+        { type: 'BudgetRecord', id: `budget-${arg.budgetId}` },
       ],
     }),
 
-    // Удаление записи
     deleteBudgetRecord: builder.mutation<
       DeleteBudgetRecordResponse,
       DeleteBudgetRecordRequest
@@ -87,6 +100,7 @@ export const budgetRecordApiSlice = apiSlice.injectEndpoints({
 export const {
   useGetAllBudgetRecordsQuery,
   useGetBudgetRecordByIdQuery,
+  useGetBudgetRecordsByBudgetIdQuery,
   useAddBudgetRecordMutation,
   useUpdateBudgetRecordMutation,
   useDeleteBudgetRecordMutation,

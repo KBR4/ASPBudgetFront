@@ -1,4 +1,4 @@
-import React, { useState } from 'react'; // Добавлен импорт useState
+import React, { useState } from 'react';
 import {
   Box,
   Typography,
@@ -10,26 +10,25 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useUserInfoQuery } from '../api/userApiSlice';
 import {
-  useGetAllBudgetsQuery,
+  useGetUserBudgetsQuery,
   useDeleteBudgetMutation,
+  useAddBudgetMutation,
 } from '../api/budgetApiSlice';
 
 export default function BudgetList() {
   const navigate = useNavigate();
   const [selectedBudgetId, setSelectedBudgetId] = useState<number | null>(null);
 
-  // 1. Получаем данные пользователя (передаем undefined, так как запрос не требует параметров)
   const {
     data: user,
     isLoading: isUserLoading,
     isError,
-  } = useUserInfoQuery({});
+  } = useUserInfoQuery(undefined);
 
-  // 2. Получаем все бюджеты
-  const { data: budgets = [], isLoading: isBudgetsLoading } =
-    useGetAllBudgetsQuery();
+  const { data: userBudgets = [], isLoading: isBudgetsLoading } =
+    useGetUserBudgetsQuery(undefined);
 
-  // 3. Хук для удаления бюджета
+  const [createBudget] = useAddBudgetMutation();
   const [deleteBudget] = useDeleteBudgetMutation();
 
   const handleLogout = () => {
@@ -47,8 +46,30 @@ export default function BudgetList() {
     }
   };
 
-  const handleCreateNew = () => {
-    navigate('/budget/0');
+  const handleCreateNew = async () => {
+    if (!user) {
+      console.error('User not loaded yet');
+      return;
+    }
+
+    try {
+      const now = new Date();
+      const newBudget = await createBudget({
+        name: 'New Budget',
+        creatorId: user.id,
+        description: '',
+        startDate: now,
+        finishDate: new Date(
+          now.getFullYear() + 1,
+          now.getMonth(),
+          now.getDate()
+        ),
+      }).unwrap();
+
+      navigate(`/budget/${newBudget.id}`);
+    } catch (error) {
+      console.error('Failed to create new budget:', error);
+    }
   };
 
   const handleSelect = () => {
@@ -57,7 +78,7 @@ export default function BudgetList() {
     }
   };
 
-  if (isUserLoading) {
+  if (isUserLoading || isBudgetsLoading) {
     return (
       <div
         style={{ display: 'flex', justifyContent: 'center', padding: '50px' }}
@@ -69,6 +90,7 @@ export default function BudgetList() {
 
   if (isError) {
     navigate('/login');
+    return null;
   }
 
   return (
@@ -87,18 +109,24 @@ export default function BudgetList() {
         Select Budget
       </Typography>
 
-      <Select
-        fullWidth
-        value={selectedBudgetId || ''}
-        onChange={(e) => setSelectedBudgetId(Number(e.target.value))}
-        sx={{ mb: 3 }}
-      >
-        {budgets.map((budget) => (
-          <MenuItem key={budget.id} value={budget.id}>
-            {budget.name}
-          </MenuItem>
-        ))}
-      </Select>
+      {userBudgets.length === 0 ? (
+        <Typography variant='body1' sx={{ mb: 3, fontStyle: 'italic' }}>
+          No budgets found. Create your first budget!
+        </Typography>
+      ) : (
+        <Select
+          fullWidth
+          value={selectedBudgetId || ''}
+          onChange={(e) => setSelectedBudgetId(Number(e.target.value))}
+          sx={{ mb: 3 }}
+        >
+          {userBudgets.map((budget) => (
+            <MenuItem key={budget.id} value={budget.id}>
+              {budget.name}
+            </MenuItem>
+          ))}
+        </Select>
+      )}
 
       <Box sx={{ display: 'flex', gap: 2 }}>
         <Button
