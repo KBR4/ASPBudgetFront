@@ -1,37 +1,75 @@
-import React from 'react';
-import { Box, Typography, Button, Select, MenuItem } from '@mui/material';
-import { useState } from 'react';
+import React, { useState } from 'react';
+import {
+  Box,
+  Typography,
+  Button,
+  Select,
+  MenuItem,
+  CircularProgress,
+} from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import { BudgetDto } from '../api/models/budget';
-import { UserDto } from '../api/models/user';
-import { Roles } from '../api/models/roles';
-import { mockUser } from '../api/models/mockdatauser';
-
-const mockBudgets: BudgetDto[] = [
-  { id: 1, name: 'Budget 1', creatorId: 1 },
-  { id: 2, name: 'Debts', creatorId: 1 },
-  { id: 3, name: 'Budget 10', creatorId: 1 },
-];
+import { useUserInfoQuery } from '../api/userApiSlice';
+import {
+  useGetUserBudgetsQuery,
+  useDeleteBudgetMutation,
+  useAddBudgetMutation,
+} from '../api/budgetApiSlice';
 
 export default function BudgetList() {
-  const [budgets, setBudgets] = useState<BudgetDto[]>(mockBudgets);
-  const [selectedBudgetId, setSelectedBudgetId] = useState<number | null>(null);
   const navigate = useNavigate();
+  const [selectedBudgetId, setSelectedBudgetId] = useState<number | null>(null);
+
+  const {
+    data: user,
+    isLoading: isUserLoading,
+    isError,
+  } = useUserInfoQuery(undefined);
+
+  const { data: userBudgets = [], isLoading: isBudgetsLoading } =
+    useGetUserBudgetsQuery(undefined);
+
+  const [createBudget] = useAddBudgetMutation();
+  const [deleteBudget] = useDeleteBudgetMutation();
 
   const handleLogout = () => {
     navigate('/login');
-    //logic for logout
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (selectedBudgetId) {
-      setBudgets(budgets.filter((budget) => budget.id !== selectedBudgetId));
-      setSelectedBudgetId(null);
+      try {
+        await deleteBudget(selectedBudgetId).unwrap();
+        setSelectedBudgetId(null);
+      } catch (error) {
+        console.error('Failed to delete budget:', error);
+      }
     }
   };
 
-  const handleCreateNew = () => {
-    navigate('/budget/0');
+  const handleCreateNew = async () => {
+    if (!user) {
+      console.error('User not loaded yet');
+      return;
+    }
+
+    try {
+      const now = new Date();
+      const newBudget = await createBudget({
+        name: 'New Budget',
+        creatorId: user.id,
+        description: '',
+        startDate: now,
+        finishDate: new Date(
+          now.getFullYear() + 1,
+          now.getMonth(),
+          now.getDate()
+        ),
+      }).unwrap();
+
+      navigate(`/budget/${newBudget.id}`);
+    } catch (error) {
+      console.error('Failed to create new budget:', error);
+    }
   };
 
   const handleSelect = () => {
@@ -40,11 +78,26 @@ export default function BudgetList() {
     }
   };
 
+  if (isUserLoading || isBudgetsLoading) {
+    return (
+      <div
+        style={{ display: 'flex', justifyContent: 'center', padding: '50px' }}
+      >
+        <CircularProgress />
+      </div>
+    );
+  }
+
+  if (isError) {
+    navigate('/login');
+    return null;
+  }
+
   return (
     <Box sx={{ maxWidth: 800, mx: 'auto', mt: 4, p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Typography variant='h6' sx={{ mr: 2 }}>
-          Welcome {mockUser.firstName} {mockUser.lastName}!
+          Welcome {user?.firstName} {user?.lastName}!
         </Typography>
         <Button onClick={() => navigate('/profile')}>Profile</Button>
         <Button variant='outlined' onClick={handleLogout}>
@@ -56,18 +109,24 @@ export default function BudgetList() {
         Select Budget
       </Typography>
 
-      <Select
-        fullWidth
-        value={selectedBudgetId || ''}
-        onChange={(e) => setSelectedBudgetId(Number(e.target.value))}
-        sx={{ mb: 3 }}
-      >
-        {budgets.map((budget) => (
-          <MenuItem key={budget.id} value={budget.id}>
-            {budget.name}
-          </MenuItem>
-        ))}
-      </Select>
+      {userBudgets.length === 0 ? (
+        <Typography variant='body1' sx={{ mb: 3, fontStyle: 'italic' }}>
+          No budgets found. Create your first budget!
+        </Typography>
+      ) : (
+        <Select
+          fullWidth
+          value={selectedBudgetId || ''}
+          onChange={(e) => setSelectedBudgetId(Number(e.target.value))}
+          sx={{ mb: 3 }}
+        >
+          {userBudgets.map((budget) => (
+            <MenuItem key={budget.id} value={budget.id}>
+              {budget.name}
+            </MenuItem>
+          ))}
+        </Select>
+      )}
 
       <Box sx={{ display: 'flex', gap: 2 }}>
         <Button
